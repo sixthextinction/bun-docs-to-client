@@ -25,7 +25,16 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/jokes/categories": {

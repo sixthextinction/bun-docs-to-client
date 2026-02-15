@@ -154,13 +154,42 @@ function generateMethodName(path: string, method: string, operationId?: string):
   
   // Infer from path and method
   const parts = path.split('/').filter(Boolean);
-  const lastPart = parts[parts.length - 1] || 'resource';
   const methodPrefix = method.toLowerCase() === 'get' ? 'get' : 
                        method.toLowerCase() === 'post' ? 'create' :
                        method.toLowerCase() === 'put' ? 'update' :
                        method.toLowerCase() === 'patch' ? 'patch' : 'delete';
   
-  return `${methodPrefix}${capitalize(lastPart.replace(/[^a-zA-Z0-9]/g, ''))}`;
+  // Extract resource name (second-to-last part if last is {id} or schema, otherwise last part)
+  let resourceName = 'resource';
+  let suffix = '';
+  
+  if (parts.length === 0) {
+    resourceName = 'resource';
+  } else {
+    const lastPart = parts[parts.length - 1];
+    const secondLastPart = parts.length > 1 ? parts[parts.length - 2] : null;
+    
+    // Check if last part is a path parameter like {id}
+    if (lastPart && lastPart.startsWith('{') && lastPart.endsWith('}')) {
+      // Path like /people/{id} -> getPeopleById
+      resourceName = secondLastPart || 'resource';
+      const paramName = lastPart.slice(1, -1); // Remove { }
+      suffix = `By${capitalize(paramName)}`;
+    } else if (lastPart === 'schema' || lastPart === 'Schema') {
+      // Path like /people/schema -> getPeopleSchema
+      resourceName = secondLastPart || 'resource';
+      suffix = 'Schema';
+    } else {
+      // Regular path like /people -> getPeople
+      resourceName = lastPart;
+    }
+  }
+  
+  // Clean resource name
+  resourceName = resourceName.replace(/[^a-zA-Z0-9]/g, '');
+  if (!resourceName) resourceName = 'resource';
+  
+  return `${methodPrefix}${capitalize(resourceName)}${suffix}`;
 }
 
 function capitalize(str: string): string {

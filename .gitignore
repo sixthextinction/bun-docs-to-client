@@ -2,5 +2,6 @@ node_modules/
 dist/
 generated/
 bin/
+debug/
 *.log
 .DS_Store

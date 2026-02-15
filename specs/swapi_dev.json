@@ -11,33 +11,16 @@
     }
   ],
   "paths": {
-    "/share": {
+    "/": {
       "get": {
-        "summary": "Get Share",
+        "summary": "Get Resource",
         "responses": {
           "200": {
             "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Share"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/phalt_": {
-      "get": {
-        "summary": "Get Phalt_",
-        "responses": {
-          "200": {
-            "description": "Success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Phalt_"
+                  "$ref": "#/components/schemas/Resource"
                 }
               }
             }
@@ -62,6 +45,23 @@
         }
       }
     },
+    "/people/schema": {
+      "get": {
+        "summary": "Get Schema",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/films": {
       "get": {
         "summary": "Get Film",
@@ -72,6 +72,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Film"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/films/schema": {
+      "get": {
+        "summary": "Get Schema",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
                 }
               }
             }
@@ -96,6 +113,23 @@
         }
       }
     },
+    "/starships/schema": {
+      "get": {
+        "summary": "Get Schema",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/vehicles": {
       "get": {
         "summary": "Get Vehicle",
@@ -106,6 +140,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Vehicle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles/schema": {
+      "get": {
+        "summary": "Get Schema",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
                 }
               }
             }
@@ -130,9 +181,205 @@
         }
       }
     },
+    "/species/schema": {
+      "get": {
+        "summary": "Get Schema",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/planets": {
       "get": {
         "summary": "Get Planet",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Planet"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/planets/schema": {
+      "get": {
+        "summary": "Get Schema",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Schema"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/{id}": {
+      "get": {
+        "summary": "Get People by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/People"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/films/{id}": {
+      "get": {
+        "summary": "Get Film by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Film"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/starships/{id}": {
+      "get": {
+        "summary": "Get Starship by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Starship"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles/{id}": {
+      "get": {
+        "summary": "Get Vehicle by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vehicle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/species/{id}": {
+      "get": {
+        "summary": "Get Specie by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Specie"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/planets/{id}": {
+      "get": {
+        "summary": "Get Planet by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success",
@@ -150,15 +397,15 @@
   },
   "components": {
     "schemas": {
-      "Share": {
-        "type": "object",
-        "properties": {}
-      },
-      "Phalt_": {
+      "Resource": {
         "type": "object",
         "properties": {}
       },
       "People": {
+        "type": "object",
+        "properties": {}
+      },
+      "Schema": {
         "type": "object",
         "properties": {}
       },

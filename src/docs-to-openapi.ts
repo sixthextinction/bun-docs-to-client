@@ -9,12 +9,268 @@ interface Endpoint {
   path: string;
   method: string;
   queryParams?: string[];
+  pathParams?: string[];
+  description?: string;
 }
 
 interface ApiResponse {
   status: number;
   data: any;
   headers: Record<string, string>;
+}
+
+async function extractEndpointsWithLLM(markdown: string, inputUrl: string): Promise<Endpoint[]> {
+  const baseUrl = extractBaseUrl(markdown, inputUrl);
+  
+  // Truncate markdown if too long (keep first 8000 chars to avoid token limits)
+  // const truncatedMarkdown = markdown.length > 8000 
+  //   ? markdown.substring(0, 8000) + '\n\n[... truncated ...]'
+  //   : markdown;
+  
+  const prompt = `You are an API documentation parser. Extract all API endpoints from the following markdown documentation.
+
+Base URL: ${baseUrl}
+
+Documentation:
+${markdown}
+
+Extract all API endpoints mentioned in the documentation. For each endpoint, identify:
+1. The path (normalize path parameters like /people/1/ to /people/{id}/)
+2. HTTP method (GET, POST, PUT, DELETE, etc.)
+3. Query parameters (if any)
+4. Path parameters (if any, like {id}, {category}, etc.)
+5. Brief description if available
+
+Return ONLY a JSON array of endpoints in this exact format:
+[
+  {
+    "path": "/jokes/random",
+    "method": "GET",
+    "queryParams": ["category"],
+    "pathParams": [],
+    "description": "Get a random joke"
+  },
+  {
+    "path": "/people/{id}",
+    "method": "GET",
+    "queryParams": [],
+    "pathParams": ["id"],
+    "description": "Get a specific person"
+  }
+]
+
+Only include actual API endpoints. Exclude:
+- Image URLs (/img/, .png, .jpg, etc.)
+- Static assets (/css/, /js/, etc.)
+- OAuth endpoints (/oauth/, /connect/)
+- External links (different domains)
+- Social media links (/twitter/, /github/, etc.)
+- Very long paths that look like base64 data
+
+Return ONLY the JSON array, no other text.`;
+
+  try {
+    const ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+    const model = process.env.OLLAMA_MODEL || 'hf.co/unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M';
+    
+    const response = await fetch(`${ollamaUrl}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        stream: false,
+        format: 'json',
+        options: {
+          temperature: 0.1, // Low temperature for more deterministic output
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json() as any;
+    const content = data.message?.content || data.response || '';
+    
+    // Save LLM response to debug file
+    try {
+      const debugDir = join(process.cwd(), 'debug');
+      await mkdir(debugDir, { recursive: true });
+      
+      const urlObj = new URL(inputUrl);
+      const debugFilename = `${urlObj.hostname.replace(/\./g, '_')}_${Date.now()}.md`;
+      const debugPath = join(debugDir, debugFilename);
+      
+      // @ts-ignore - Bun global
+      await Bun.write(debugPath, content);
+      console.log(`   💾 Saved LLM response to ./debug/${debugFilename}`);
+    } catch (debugError) {
+      // Don't fail if debug save fails
+      console.warn(`   ⚠️  Failed to save debug file: ${debugError instanceof Error ? debugError.message : String(debugError)}`);
+    }
+    
+    // Parse JSON from response (might be wrapped in markdown code blocks)
+    let jsonStr = content.trim();
+    
+    // Remove markdown code blocks if present
+    jsonStr = jsonStr.replace(/^```json\n?/i, '').replace(/^```\n?/, '').replace(/\n?```$/i, '');
+    jsonStr = jsonStr.trim();
+    
+    // Try to extract JSON array if wrapped in other text
+    const jsonMatch = jsonStr.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[0];
+    }
+    
+    const endpoints = JSON.parse(jsonStr) as Endpoint[];
+    
+    // Validate and normalize endpoints
+    return endpoints
+      .filter(e => e.path && e.method)
+      .map(e => ({
+        ...e,
+        path: normalizePath(e.path),
+        method: e.method.toUpperCase(),
+        queryParams: e.queryParams?.filter(p => p) || undefined,
+        pathParams: e.pathParams?.filter(p => p) || undefined,
+      }));
+  } catch (error) {
+    console.warn(`   ⚠️  LLM extraction failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn('   Falling back to regex-based extraction...');
+    // Fallback to regex-based extraction
+    return extractEndpoints(markdown, inputUrl);
+  }
+}
+
+function extractBaseUrl(markdown: string, inputUrl: string): string {
+  // Try to find base URL from API examples (look for URLs in code blocks)
+  const urlPattern = /https?:\/\/[^\s`)\]}]+/g;
+  const urlMatches = markdown.match(urlPattern) || [];
+  
+  // Find first URL that looks like an API endpoint
+  for (const urlMatch of urlMatches) {
+    try {
+      const cleanedUrl = urlMatch.replace(/[)\]}]+$/, '');
+      const urlObj = new URL(cleanedUrl);
+      const path = urlObj.pathname;
+      
+      // Prefer URLs that look like API endpoints
+      if (isApiEndpoint(path) || path.match(/^\/api\//) || path.match(/^\/[\w-]+\/(random|categories|search)/i)) {
+        return `${urlObj.protocol}//${urlObj.host}`;
+      }
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+  
+  // Fallback: use first valid URL
+  if (urlMatches.length > 0 && urlMatches[0]) {
+    try {
+      const cleanedUrl = urlMatches[0].replace(/[)\]}]+$/, '');
+      const urlObj = new URL(cleanedUrl);
+      return `${urlObj.protocol}//${urlObj.host}`;
+    } catch {
+      // Fall through
+    }
+  }
+  
+  // Final fallback: infer from input URL
+  try {
+    const urlObj = new URL(inputUrl);
+    return `${urlObj.protocol}//${urlObj.host}`;
+  } catch {
+    return 'https://api.example.com';
+  }
+}
+
+function normalizePath(path: string): string {
+  // Replace numeric IDs with {id}
+  let normalized = path.replace(/\/\d+\//g, '/{id}/').replace(/\/\d+$/g, '/{id}');
+  
+  // Replace :id with {id}
+  normalized = normalized.replace(/\/:(\w+)\//g, '/{$1}/').replace(/\/:(\w+)$/g, '/{$1}');
+  
+  // Ensure trailing slash consistency (remove for now, can adjust)
+  normalized = normalized.replace(/\/$/, '') || '/';
+  
+  return normalized;
+}
+
+function isApiEndpoint(path: string): boolean {
+  // Filter out obvious non-API paths
+  const excludePatterns = [
+    /^\/img\//,           // Images
+    /^\/cdn\//,           // CDN assets
+    /\.(png|jpg|jpeg|gif|svg|ico|css|js)$/i, // File extensions
+    /^\/oauth\//,         // OAuth endpoints
+    /^\/connect\//,      // OAuth connect
+    /^\/l\//,             // Link shorteners
+    /^\/[A-Za-z0-9+/]{50,}/, // Base64-like long strings (likely images)
+    /^\/signup/,          // Auth pages
+    /^\/analytics/,       // Analytics
+    /^\/privacy/,         // Privacy pages
+    /^\/status/,          // Status pages
+    /^\/twitter/,         // External links
+    /^\/github/,          // External links
+    /^\/slack/,           // External links
+    /^\/m\./,             // Messenger links
+    /^\/www\./,           // External www links
+    /^\/aws/,             // External links
+    /^\/jugendstil/,      // External links
+    /^\/jesgrad07/,       // External links
+    /^\/Loader/,          // Component names
+    /^\/chucknorris$/,    // Just domain name
+    /^\/MatChilling$/,    // Username
+    /^\/$/,               // Root path
+    /^\/\/+/,             // Double slashes
+  ];
+  
+  // Check exclude patterns
+  for (const pattern of excludePatterns) {
+    if (pattern.test(path)) {
+      return false;
+    }
+  }
+  
+  // Paths that are too long are likely not API endpoints
+  if (path.length > 200) {
+    return false;
+  }
+  
+  // Prefer paths that look like API endpoints
+  // Common patterns: /api/, /v1/, /v2/, resource names like /jokes/, /users/, etc.
+  const apiPatterns = [
+    /^\/api\//,
+    /^\/v\d+\//,
+    /^\/[\w-]+\/(random|categories|search|list|get|create|update|delete)/i,
+    /^\/[\w-]+\/\d+/,  // Resource with ID
+    /^\/[\w-]+\/\{id\}/, // Resource with {id}
+    /^\/[\w-]+\?/,     // Resource with query params
+  ];
+  
+  // If it matches API patterns, include it
+  for (const pattern of apiPatterns) {
+    if (pattern.test(path)) {
+      return true;
+    }
+  }
+  
+  // Also include simple resource paths like /jokes/, /users/, etc.
+  // But exclude if it's too short or looks like a file
+  if (path.match(/^\/[\w-]+\/?$/) && path.length > 2 && path.length < 50) {
+    return true;
+  }
+  
+  return false;
 }
 
 export async function docsToOpenAPI(input: string): Promise<any> {
@@ -27,8 +283,8 @@ export async function docsToOpenAPI(input: string): Promise<any> {
   const turndownService = new TurndownService();
   const markdown = turndownService.turndown(html);
   
-  // 3. Extract endpoints
-  const endpoints = extractEndpoints(markdown, input);
+  // 3. Extract endpoints using LLM
+  const endpoints = await extractEndpointsWithLLM(markdown, input);
   console.log(`   Found ${endpoints.length} endpoints`);
   
   // 4. Extract base URL
@@ -120,128 +376,6 @@ function extractEndpoints(markdown: string, inputUrl: string): Endpoint[] {
   return endpoints;
 }
 
-function isApiEndpoint(path: string): boolean {
-  // Filter out obvious non-API paths
-  const excludePatterns = [
-    /^\/img\//,           // Images
-    /^\/cdn\//,           // CDN assets
-    /\.(png|jpg|jpeg|gif|svg|ico|css|js)$/i, // File extensions
-    /^\/oauth\//,         // OAuth endpoints
-    /^\/connect\//,      // OAuth connect
-    /^\/l\//,             // Link shorteners
-    /^\/[A-Za-z0-9+/]{50,}/, // Base64-like long strings (likely images)
-    /^\/signup/,          // Auth pages
-    /^\/analytics/,       // Analytics
-    /^\/privacy/,         // Privacy pages
-    /^\/status/,          // Status pages
-    /^\/twitter/,         // External links
-    /^\/github/,          // External links
-    /^\/slack/,           // External links
-    /^\/m\./,             // Messenger links
-    /^\/www\./,           // External www links
-    /^\/aws/,             // External links
-    /^\/jugendstil/,      // External links
-    /^\/jesgrad07/,       // External links
-    /^\/Loader/,          // Component names
-    /^\/chucknorris$/,    // Just domain name
-    /^\/MatChilling$/,    // Username
-    /^\/$/,               // Root path
-    /^\/\/+/,             // Double slashes
-  ];
-  
-  // Check exclude patterns
-  for (const pattern of excludePatterns) {
-    if (pattern.test(path)) {
-      return false;
-    }
-  }
-  
-  // Paths that are too long are likely not API endpoints
-  if (path.length > 200) {
-    return false;
-  }
-  
-  // Prefer paths that look like API endpoints
-  // Common patterns: /api/, /v1/, /v2/, resource names like /jokes/, /users/, etc.
-  const apiPatterns = [
-    /^\/api\//,
-    /^\/v\d+\//,
-    /^\/[\w-]+\/(random|categories|search|list|get|create|update|delete)/i,
-    /^\/[\w-]+\/\d+/,  // Resource with ID
-    /^\/[\w-]+\/\{id\}/, // Resource with {id}
-    /^\/[\w-]+\?/,     // Resource with query params
-  ];
-  
-  // If it matches API patterns, include it
-  for (const pattern of apiPatterns) {
-    if (pattern.test(path)) {
-      return true;
-    }
-  }
-  
-  // Also include simple resource paths like /jokes/, /users/, etc.
-  // But exclude if it's too short or looks like a file
-  if (path.match(/^\/[\w-]+\/?$/) && path.length > 2 && path.length < 50) {
-    return true;
-  }
-  
-  return false;
-}
-
-function normalizePath(path: string): string {
-  // Replace numeric IDs with {id}
-  let normalized = path.replace(/\/\d+\//g, '/{id}/').replace(/\/\d+$/g, '/{id}');
-  
-  // Replace :id with {id}
-  normalized = normalized.replace(/\/:(\w+)\//g, '/{$1}/').replace(/\/:(\w+)$/g, '/{$1}');
-  
-  // Ensure trailing slash consistency (remove for now, can adjust)
-  normalized = normalized.replace(/\/$/, '') || '/';
-  
-  return normalized;
-}
-
-function extractBaseUrl(markdown: string, inputUrl: string): string {
-  // Try to find base URL from API examples (look for URLs in code blocks)
-  const urlPattern = /https?:\/\/[^\s`)\]}]+/g;
-  const urlMatches = markdown.match(urlPattern) || [];
-  
-  // Find first URL that looks like an API endpoint
-  for (const urlMatch of urlMatches) {
-    try {
-      const cleanedUrl = urlMatch.replace(/[)\]}]+$/, '');
-      const urlObj = new URL(cleanedUrl);
-      const path = urlObj.pathname;
-      
-      // Prefer URLs that look like API endpoints
-      if (isApiEndpoint(path) || path.match(/^\/api\//) || path.match(/^\/[\w-]+\/(random|categories|search)/i)) {
-        return `${urlObj.protocol}//${urlObj.host}`;
-      }
-    } catch {
-      // Invalid URL, skip
-    }
-  }
-  
-  // Fallback: use first valid URL
-  if (urlMatches.length > 0) {
-    try {
-      const cleanedUrl = urlMatches[0].replace(/[)\]}]+$/, '');
-      const urlObj = new URL(cleanedUrl);
-      return `${urlObj.protocol}//${urlObj.host}`;
-    } catch {
-      // Fall through
-    }
-  }
-  
-  // Final fallback: infer from input URL
-  try {
-    const urlObj = new URL(inputUrl);
-    return `${urlObj.protocol}//${urlObj.host}`;
-  } catch {
-    return 'https://api.example.com';
-  }
-}
-
 async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Promise<any> {
   const paths: Record<string, any> = {};
   const schemas: Record<string, any> = {};
@@ -302,7 +436,10 @@ async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Prom
         
         // Test detail endpoints with discovered IDs
         for (const detailEndpoint of detailEndpoints) {
-          if (detailEndpoint.path.startsWith(endpoint.path.split('/').slice(0, -1).join('/'))) {
+          // Check if detail endpoint belongs to this list endpoint
+          // e.g., /people matches /people/{id}
+          const detailBasePath = detailEndpoint.path.replace('/{id}', '').replace('/{id}/', '');
+          if (detailBasePath === endpoint.path || detailEndpoint.path.startsWith(endpoint.path + '/')) {
             for (const id of ids.slice(0, 2)) { // Test with first 2 IDs
               const testPath = detailEndpoint.path.replace('{id}', id);
               const detailResponse = await testEndpoint(baseUrl, { ...detailEndpoint, path: testPath });
@@ -316,7 +453,12 @@ async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Prom
                 paths[detailEndpoint.path] = {
                   get: {
                     summary: `Get ${detailSchemaName} by ID`,
-                    parameters: [{
+                    parameters: detailEndpoint.pathParams?.map(param => ({
+                      name: param,
+                      in: 'path',
+                      required: true,
+                      schema: { type: 'string' }
+                    })) || [{
                       name: 'id',
                       in: 'path',
                       required: true,
@@ -355,7 +497,7 @@ async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Prom
         const categoriesEndpoint = listEndpoints.find(e => e.path.includes('categor'));
         if (categoriesEndpoint) {
           const catResponse = await testEndpoint(baseUrl, categoriesEndpoint);
-          if (catResponse.status === 200 && Array.isArray(catResponse.data) && catResponse.data.length > 0) {
+          if (catResponse.status === 200 && Array.isArray(catResponse.data) && catResponse.data.length > 0 && catResponse.data[0]) {
             testPath = endpoint.path.replace('{category}', catResponse.data[0]);
           } else {
             testPath = endpoint.path.replace('{category}', 'dev'); // Default
@@ -407,6 +549,53 @@ async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Prom
       }
     } catch (error) {
       console.warn(`   ⚠️  Failed to test ${endpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  // Process any detail endpoints that weren't already processed
+  for (const detailEndpoint of detailEndpoints) {
+    if (!paths[detailEndpoint.path]) {
+      // Try with a common ID (1) as fallback
+      try {
+        const testPath = detailEndpoint.path.replace('{id}', '1');
+        const detailResponse = await testEndpoint(baseUrl, { ...detailEndpoint, path: testPath });
+        if (detailResponse.status === 200) {
+          const detailSchemaName = inferSchemaName(detailEndpoint.path);
+          const detailSchema = inferSchema(detailResponse.data, detailSchemaName);
+          if (detailSchema) {
+            schemas[detailSchemaName] = detailSchema;
+          }
+          
+          paths[detailEndpoint.path] = {
+            get: {
+              summary: `Get ${detailSchemaName} by ID`,
+              parameters: detailEndpoint.pathParams?.map(param => ({
+                name: param,
+                in: 'path',
+                required: true,
+                schema: { type: 'string' }
+              })) || [{
+                name: 'id',
+                in: 'path',
+                required: true,
+                schema: { type: 'string' }
+              }],
+              responses: {
+                '200': {
+                  description: 'Success',
+                  content: {
+                    'application/json': {
+                      schema: { $ref: `#/components/schemas/${detailSchemaName}` }
+                    }
+                  }
+                }
+              }
+            }
+          };
+        }
+      } catch (error) {
+        console.warn(`   ⚠️  Failed to test detail endpoint ${detailEndpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
   
