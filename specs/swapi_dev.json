@@ -1,0 +1,187 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "API Client",
+    "version": "1.0.0",
+    "description": "Generated from HTML documentation"
+  },
+  "servers": [
+    {
+      "url": "https://twitter.com"
+    }
+  ],
+  "paths": {
+    "/share": {
+      "get": {
+        "summary": "Get Share",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Share"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/phalt_": {
+      "get": {
+        "summary": "Get Phalt_",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Phalt_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people": {
+      "get": {
+        "summary": "Get People",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/People"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/films": {
+      "get": {
+        "summary": "Get Film",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Film"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/starships": {
+      "get": {
+        "summary": "Get Starship",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Starship"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vehicles": {
+      "get": {
+        "summary": "Get Vehicle",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Vehicle"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/species": {
+      "get": {
+        "summary": "Get Specie",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Specie"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/planets": {
+      "get": {
+        "summary": "Get Planet",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Planet"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Share": {
+        "type": "object",
+        "properties": {}
+      },
+      "Phalt_": {
+        "type": "object",
+        "properties": {}
+      },
+      "People": {
+        "type": "object",
+        "properties": {}
+      },
+      "Film": {
+        "type": "object",
+        "properties": {}
+      },
+      "Starship": {
+        "type": "object",
+        "properties": {}
+      },
+      "Vehicle": {
+        "type": "object",
+        "properties": {}
+      },
+      "Specie": {
+        "type": "object",
+        "properties": {}
+      },
+      "Planet": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  }
+}

@@ -57,6 +57,34 @@ export function extractSiteName(input: string): string {
   return filename.replace(/\.json$/, '').replace(/\./g, '_');
 }
 
+export async function detectContentType(url: string): Promise<'html' | 'json'> {
+  try {
+    const response = await fetch(url, { method: 'HEAD' });
+    const contentType = response.headers.get('content-type') || '';
+    
+    if (contentType.includes('html')) {
+      return 'html';
+    }
+    if (contentType.includes('json')) {
+      return 'json';
+    }
+    
+    // Fallback: try GET and check first bytes
+    const fullResponse = await fetch(url);
+    const text = await fullResponse.text();
+    const trimmed = text.trim();
+    
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      return 'json';
+    }
+    
+    return 'html';
+  } catch {
+    // Default to HTML if detection fails
+    return 'html';
+  }
+}
+
 export async function fetchOpenAPI(input: string): Promise<any> {
   // Handle file paths
   if (!isUrl(input)) {

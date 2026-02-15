@@ -94,4 +94,4 @@ The generator automatically creates `client.test.ts` with an **opinionated** tes
 bun test generated/[site-name]/client.test.ts
 ```
 
-**Note:** Tests make real HTTP requests to the API. Ensure the API is accessible and you have network connectivity.
+**Note:** Tests make real HTTP requests to the API. Ensure the API is accessible + you have network connectivity.

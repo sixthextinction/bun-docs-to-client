@@ -1,5 +1,6 @@
-import { normalizeUrl, isUrl, extractSiteName } from './src/fetch.js';
+import { normalizeUrl, isUrl, extractSiteName, detectContentType } from './src/fetch.js';
 import { parseOpenAPI } from './src/parse.js';
+import { docsToOpenAPI } from './src/docs-to-openapi.js';
 import { generateClient } from './src/generate.js';
 import { emitFiles } from './src/emit.js';
 
@@ -14,15 +15,34 @@ async function main() {
   }
 
   try {
+    let spec: any;
+    let specPath: string = input;
+    
     if (isUrl(input)) {
-      // If it's a URL, fetch the spec
-      console.log(`1. Fetching OpenAPI spec from ${input}...`);
+      // Detect if it's HTML docs or OpenAPI JSON
+      const contentType = await detectContentType(input);
+      
+      if (contentType === 'html') {
+        // HTML docs path
+        console.log(`1. Fetching HTML docs from ${input}...`);
+        spec = await docsToOpenAPI(input);
+      } else {
+        // Existing OpenAPI JSON path
+        console.log(`1. Fetching OpenAPI spec from ${input}...`);
+        specPath = normalizeUrl(input);
+        spec = await parseOpenAPI(specPath);
+      }
     } else {
-      // If it's a file path, just read the file
-      console.log(`1. Reading OpenAPI spec from ${input}...`);
+      // File path - check extension
+      if (input.endsWith('.json')) {
+        specPath = input;
+        spec = await parseOpenAPI(specPath);
+      } else {
+        // Assume HTML docs file
+        console.log(`1. Reading HTML docs from ${input}...`);
+        spec = await docsToOpenAPI(input);
+      }
     }
-    const specPath = normalizeUrl(input);
-    const spec = await parseOpenAPI(specPath);
     
     const siteName = extractSiteName(input);
     
