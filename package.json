@@ -1,0 +1,22 @@
+{
+  "name": "docs-to-cli",
+  "version": "0.1.0",
+  "description": "Generate typed Bun clients from OpenAPI specs",
+  "type": "module",
+  "bin": {
+    "docs-to-cli": "./index.ts"
+  },
+  "scripts": {
+    "dev": "bun run index.ts",
+    "test": "bun test"
+  },
+  "keywords": ["openapi", "swagger", "bun", "cli", "typescript"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@apidevtools/swagger-parser": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}
