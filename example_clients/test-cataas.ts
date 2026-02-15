@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { ApiClient } from './generated/cataas_com/client.js';
+import { ApiClient } from '../generated/cataas_com/client.js';
 
 const client = new ApiClient('https://cataas.com');
 

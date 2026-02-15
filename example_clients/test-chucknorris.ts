@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { ApiClient } from './generated/api_chucknorris_io/client.js';
+import { ApiClient } from '../generated/api_chucknorris_io/client.js';
 
 const client = new ApiClient('https://api.chucknorris.io');
 

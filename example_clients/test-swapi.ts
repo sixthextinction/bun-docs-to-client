@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { ApiClient } from './generated/swapi_dev/client.js';
+import { ApiClient } from '../generated/swapi_dev/client.js';
 
 const client = new ApiClient('https://swapi.dev/api');
 
