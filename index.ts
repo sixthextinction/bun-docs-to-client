@@ -1,7 +1,3 @@
-#!/usr/bin/env node
-// Bun shebang (commented out for portability - replaced with Node.js equivalent)
-// #!/usr/bin/env bun
-
 import { normalizeUrl, isUrl, extractSiteName } from './src/fetch.js';
 import { parseOpenAPI } from './src/parse.js';
 import { generateClient } from './src/generate.js';

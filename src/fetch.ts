@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, access } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { join } from 'path';
 
 export function isUrl(input: string): boolean {
@@ -60,21 +60,11 @@ export function extractSiteName(input: string): string {
 export async function fetchOpenAPI(input: string): Promise<any> {
   // Handle file paths
   if (!isUrl(input)) {
-    // Bun-specific API (commented out for portability - replaced with Node.js equivalents)
-    // const file = Bun.file(input);
-    // if (!await file.exists()) {
-    //   throw new Error(`File not found: ${input}`);
-    // }
-    // return await file.json();
-    
-    // Node.js equivalent for portability
-    try {
-      await access(input);
-    } catch {
+    const file = Bun.file(input);
+    if (!await file.exists()) {
       throw new Error(`File not found: ${input}`);
     }
-    const content = await readFile(input, 'utf-8');
-    return JSON.parse(content);
+    return await file.json();
   }
   
   // Handle URLs - fetch and cache
@@ -96,11 +86,7 @@ export async function fetchOpenAPI(input: string): Promise<any> {
   
   const filename = urlToFilename(input);
   const cachePath = join(specsDir, filename);
-  // Bun-specific API (commented out for portability - replaced with Node.js equivalents)
-  // await Bun.write(cachePath, JSON.stringify(spec, null, 2));
-  
-  // Node.js equivalent for portability
-  await writeFile(cachePath, JSON.stringify(spec, null, 2), 'utf-8');
+  await Bun.write(cachePath, JSON.stringify(spec, null, 2));
   console.log(`💾 Cached spec to ./specs/${filename}`);
   
   return spec;
