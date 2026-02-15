@@ -1,6 +1,40 @@
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 
+let proxyStatusLogged = false;
+
+/**
+ * Get proxy configuration from environment variables (currently only hardcoded cd..Bright Data format)
+ * Returns fetch options with proxy if configured, empty object otherwise
+ * Logs proxy status on first call
+ */
+export function getProxyOptions(): Record<string, any> {
+  const customerId = process.env.BRIGHT_DATA_CUSTOMER_ID;
+  const zone = process.env.BRIGHT_DATA_ZONE;
+  const password = process.env.BRIGHT_DATA_PASSWORD;
+  
+  if (customerId && zone && password) {
+    if (!proxyStatusLogged) {
+      console.log('Proxy config found! Using proxy to fetch docs site.');
+      proxyStatusLogged = true;
+    }
+    const proxy = `http://brd-customer-${customerId}-zone-${zone}:${password}@brd.superproxy.io:33335`;
+    return {
+      proxy,
+      tls: {
+        rejectUnauthorized: false, // Required for Bright Data proxy
+      },
+    };
+  }
+  
+  if (!proxyStatusLogged) {
+    console.log('No proxy config found, using direct connection');
+    proxyStatusLogged = true;
+  }
+  
+  return {};
+}
+
 export function isUrl(input: string): boolean {
   return input.startsWith('http://') || input.startsWith('https://');
 }
@@ -59,7 +93,11 @@ export function extractSiteName(input: string): string {
 
 export async function detectContentType(url: string): Promise<'html' | 'json'> {
   try {
-    const response = await fetch(url, { method: 'HEAD' });
+    const proxyOptions = getProxyOptions();
+    const response = await fetch(url, { 
+      method: 'HEAD',
+      ...proxyOptions,
+    } as any);
     const contentType = response.headers.get('content-type') || '';
     
     if (contentType.includes('html')) {
@@ -70,7 +108,7 @@ export async function detectContentType(url: string): Promise<'html' | 'json'> {
     }
     
     // Fallback: try GET and check first bytes
-    const fullResponse = await fetch(url);
+    const fullResponse = await fetch(url, proxyOptions as any);
     const text = await fullResponse.text();
     const trimmed = text.trim();
     
@@ -96,11 +134,13 @@ export async function fetchOpenAPI(input: string): Promise<any> {
   }
   
   // Handle URLs - fetch and cache
+  const proxyOptions = getProxyOptions();
   const response = await fetch(input, {
     headers: {
       'Accept': 'application/json',
     },
-  });
+    ...proxyOptions,
+  } as any);
   
   if (!response.ok) {
     throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);

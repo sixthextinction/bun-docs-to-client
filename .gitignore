@@ -5,3 +5,4 @@ bin/
 debug/
 *.log
 .DS_Store
+.env

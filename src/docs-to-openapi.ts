@@ -3,7 +3,7 @@ import TurndownService from 'turndown';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
-import { urlToFilename } from './fetch.js';
+import { urlToFilename, getProxyOptions } from './fetch.js';
 
 interface Endpoint {
   path: string;
@@ -276,8 +276,9 @@ function isApiEndpoint(path: string): boolean {
 export async function docsToOpenAPI(input: string): Promise<any> {
   console.log('📄 Converting HTML docs to OpenAPI spec...');
   
-  // 1. Fetch HTML
-  const html = await fetch(input).then(r => r.text());
+  // 1. Fetch HTML (with proxy if configured)
+  const proxyOptions = getProxyOptions();
+  const html = await fetch(input, proxyOptions as any).then(r => r.text());
   
   // 2. Convert to markdown
   const turndownService = new TurndownService();
@@ -621,12 +622,14 @@ async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Prom
 
 async function testEndpoint(baseUrl: string, endpoint: Endpoint): Promise<ApiResponse> {
   const url = `${baseUrl}${endpoint.path}`;
+  const proxyOptions = getProxyOptions();
   const response = await fetch(url, {
     method: endpoint.method,
     headers: {
       'Accept': 'application/json'
-    }
-  });
+    },
+    ...proxyOptions,
+  } as any);
   
   const data = await response.json().catch(() => ({}));
   
