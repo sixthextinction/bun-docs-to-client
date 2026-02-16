@@ -1,33 +1,40 @@
-# docs-to-cli
+# docs-to-client
 
 Generate a typed TypeScript client from OpenAPI specs or HTML documentation.
-
-## Installation
-
-```bash
-# Using Bun (recommended)
-bunx docs-to-cli <url-or-file>
-
-# Or build standalone executable
-bun run build
-./bin/dtoc.exe <url-or-file>
-```
 
 ## Usage
 
 ```bash
-bunx docs-to-cli <url-or-file>
+bunx docs-to-client <url-or-file>
+```
+
+Or:
+
+```bash
+bun run index.ts <url-or-file>
 ```
 
 **Examples:**
 ```bash
-# From OpenAPI JSON
-bunx docs-to-cli https://petstore3.swagger.io/api/v3/openapi.json
-bunx docs-to-cli ./specs/openapi.json
+# From URL to a OpenAPI JSON
+bunx docs-to-client https://petstore3.swagger.io/api/v3/openapi.json
+# or from disk
+bunx docs-to-client ./specs/openapi.json
 
-# From HTML documentation (auto-converts to OpenAPI)
-bunx docs-to-cli https://swapi.dev/api
-bunx docs-to-cli ./docs.html
+# From HTML documentation URL (auto-parses & generates OpenAPI spec)
+bunx docs-to-client https://swapi.dev/api
+
+# Skip generation of test for generated API client
+bunx docs-to-client ./specs/openapi.json --no-tests
+```
+
+## Standalone Executable
+
+Build a single binary (no Bun required at runtime):
+
+```bash
+bun run build
+./bin/dtoc.exe <url-or-file>
 ```
 
 ## What it does
@@ -37,7 +44,7 @@ bunx docs-to-cli ./docs.html
    - `client.ts` - ApiClient class with methods for each endpoint
    - `types.ts` - TypeScript interfaces from schemas
    - `index.ts` - Exports
-   - `client.test.ts` - Test suite
+   - `client.test.ts` - Test suite (optional; use `--no-tests` to skip)
 
 ## Features
 
@@ -62,8 +69,6 @@ const films = await client.getFilms();
 const person = await client.getPeopleById('1');
 const film = await client.getFilmsById('1');
 
-// Schema endpoints
-const schema = await client.getPeopleSchema();
 ```
 
 ## Development

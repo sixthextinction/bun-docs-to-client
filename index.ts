@@ -1,11 +1,12 @@
-import { normalizeUrl, isUrl, extractSiteName, detectContentType } from './src/fetch.js';
+import { normalizeUrl, isUrl, toSiteId, detectContentType } from './src/fetch.js';
 import { parseOpenAPI } from './src/parse.js';
 import { docsToOpenAPI } from './src/docs-to-openapi.js';
 import { generateClient } from './src/generate.js';
 import { emitFiles } from './src/emit.js';
 
 async function main() {
-  const input = process.argv[2];
+  const args = process.argv.slice(2).filter(a => a !== '--no-tests');
+  const input = args[0];
   
   if (!input) {
     console.error('Usage: bunx docs-to-cli <url-or-file>');
@@ -44,12 +45,13 @@ async function main() {
       }
     }
     
-    const siteName = extractSiteName(input);
+    const siteName = toSiteId(input);
     
     console.log(`2.✅ Parsed OpenAPI ${spec.openapi || spec.swagger} spec`);
     console.log(`3. Generating client code...`);
     
-    const clientCode = await generateClient(spec, input);
+    const generateTests = !process.argv.includes('--no-tests');
+    const clientCode = await generateClient(spec, input, { generateTests });
     
     console.log(`4. Writing files...`);
     await emitFiles(clientCode, siteName);

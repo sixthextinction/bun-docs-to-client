@@ -1,66 +1,17 @@
 interface ClientCode {
   client: string;
   types: string;
-  zod?: string;
   index: string;
   tests: string;
 }
 
-export async function generateClient(spec: any, inputUrl?: string): Promise<ClientCode> {
-  // For MVP: Template-based generation
-  // Later: Can integrate Ollama here
-  
-  let baseUrl = spec.servers?.[0]?.url;
-  
-  if (!baseUrl) {
-    // No server field - try to infer from input URL
-    if (inputUrl && isAbsoluteUrl(inputUrl)) {
-      try {
-        const urlObj = new URL(inputUrl);
-        baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-        console.warn(`⚠️  No servers field found in OpenAPI spec, inferred from input URL: ${baseUrl}`);
-        console.warn('   Verify this is correct, or override by passing baseUrl to the ApiClient constructor');
-      } catch {
-        baseUrl = 'https://api.example.com';
-        console.warn('⚠️  No servers field found in OpenAPI spec, using default: https://api.example.com');
-        console.warn('   You MUST override this by passing baseUrl to the ApiClient constructor');
-      }
-    } else {
-      baseUrl = 'https://api.example.com';
-      console.warn('⚠️  No servers field found in OpenAPI spec, using default: https://api.example.com');
-      console.warn('   You MUST override this by passing baseUrl to the ApiClient constructor');
-    }
-  } else if (!isAbsoluteUrl(baseUrl)) {
-    // Relative URL - resolve using input URL if available
-    if (inputUrl && isAbsoluteUrl(inputUrl)) {
-      try {
-        const urlObj = new URL(inputUrl);
-        const origin = `${urlObj.protocol}//${urlObj.host}`;
-        // Use URL constructor to resolve relative path
-        const resolved = new URL(baseUrl, origin);
-        baseUrl = resolved.toString().replace(/\/$/, '');
-        console.warn(`⚠️  Server URL "${spec.servers[0].url}" is relative, resolved to: ${baseUrl}`);
-        console.warn('   Verify this is correct, or override by passing baseUrl to the ApiClient constructor');
-      } catch {
-        console.warn(`⚠️  Server URL "${spec.servers[0].url}" is relative but couldn't resolve from input URL`);
-        console.warn('   You MUST override this by passing baseUrl to the ApiClient constructor');
-        baseUrl = 'https://api.example.com';
-      }
-    } else {
-      console.warn(`⚠️  Server URL "${spec.servers[0].url}" is relative but no input URL provided`);
-      console.warn('   You MUST override this by passing baseUrl to the ApiClient constructor');
-      baseUrl = 'https://api.example.com';
-    }
-  }
-  // If baseUrl is absolute, use it as-is (no warning needed)
-  
+export async function generateClient(spec: any, inputUrl?: string, options?: { generateTests?: boolean }): Promise<ClientCode> {
+  const baseUrl = resolveBaseUrl(spec, inputUrl);
   const title = spec.info?.title || 'API';
-  const version = spec.info?.version || '1.0.0';
-  
   const types = generateTypes(spec);
   const client = generateClientClass(spec, baseUrl);
   const index = generateIndex(title);
-  const tests = generateTests(spec);
+  const tests = (options?.generateTests !== false) ? generateTests(spec) : '';
   
   return {
     client,
@@ -268,6 +219,37 @@ ${fetchCode}
 
 function isAbsoluteUrl(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://');
+}
+
+function resolveBaseUrl(spec: any, inputUrl?: string): string {
+  const serverUrl = spec.servers?.[0]?.url;
+  const warn = (msg: string) => { console.warn(`⚠️  ${msg}`); console.warn('   Override by passing baseUrl to the ApiClient constructor'); };
+  
+  if (!serverUrl) {
+    if (inputUrl && isAbsoluteUrl(inputUrl)) {
+      try {
+        const u = new URL(inputUrl);
+        const resolved = `${u.protocol}//${u.host}`;
+        warn(`No servers field, inferred: ${resolved}`);
+        return resolved;
+      } catch { /* fall through */ }
+    }
+    warn('No servers field, using https://api.example.com');
+    return 'https://api.example.com';
+  }
+  
+  if (isAbsoluteUrl(serverUrl)) return serverUrl;
+  
+  if (inputUrl && isAbsoluteUrl(inputUrl)) {
+    try {
+      const u = new URL(inputUrl);
+      const resolved = new URL(serverUrl, `${u.protocol}//${u.host}`).toString().replace(/\/$/, '');
+      warn(`Relative server URL resolved to: ${resolved}`);
+      return resolved;
+    } catch { /* fall through */ }
+  }
+  warn(`Relative server URL "${serverUrl}" unresolved, using https://api.example.com`);
+  return 'https://api.example.com';
 }
 
 function generateIndex(title: string): string {

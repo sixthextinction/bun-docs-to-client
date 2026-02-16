@@ -4,7 +4,7 @@ import { join } from 'path';
 let proxyStatusLogged = false;
 
 /**
- * Get proxy configuration from environment variables (currently only hardcoded cd..Bright Data format)
+ * Get proxy configuration from environment variables (currently only hardcoded Bright Data format)
  * Returns fetch options with proxy if configured, empty object otherwise
  * Logs proxy status on first call
  */
@@ -59,36 +59,22 @@ export function normalizeUrl(url: string): string {
   return `${cleaned}.json`;
 }
 
-export function urlToFilename(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    // Convert domain to filename: cataas.com -> cataas_com.json
-    const domain = urlObj.hostname.replace(/\./g, '_');
-    return `${domain}.json`;
-  } catch {
-    // Fallback if URL parsing fails
-    const sanitized = url.replace(/[^a-zA-Z0-9]/g, '_');
-    return `${sanitized}.json`;
-  }
-}
-
-export function extractSiteName(input: string): string {
-  // If it's a URL, extract domain
+/** Unified: site identifier for output dirs and spec filenames */
+export function toSiteId(input: string): string {
   if (isUrl(input)) {
     try {
-      const urlObj = new URL(input);
-      return urlObj.hostname.replace(/\./g, '_');
+      return new URL(input).hostname.replace(/\./g, '_');
     } catch {
-      const sanitized = input.replace(/[^a-zA-Z0-9]/g, '_');
-      return sanitized;
+      return input.replace(/[^a-zA-Z0-9]/g, '_');
     }
   }
-  
-  // If it's a file path, extract from filename
   const pathParts = input.split(/[/\\]/);
-  const filename = pathParts[pathParts.length - 1];
-  // Remove .json extension if present
+  const filename = pathParts[pathParts.length - 1] || 'spec';
   return filename.replace(/\.json$/, '').replace(/\./g, '_');
+}
+
+export function toSpecFilename(input: string): string {
+  return `${toSiteId(input)}.json`;
 }
 
 export async function detectContentType(url: string): Promise<'html' | 'json'> {
@@ -147,15 +133,15 @@ export async function fetchOpenAPI(input: string): Promise<any> {
   }
   
   const spec = await response.json();
-  
-  // Cache the spec locally
+  await cacheSpec(spec, input);
+  return spec;
+}
+
+export async function cacheSpec(spec: any, input: string): Promise<void> {
   const specsDir = join(process.cwd(), 'specs');
   await mkdir(specsDir, { recursive: true });
-  
-  const filename = urlToFilename(input);
+  const filename = toSpecFilename(input);
   const cachePath = join(specsDir, filename);
   await Bun.write(cachePath, JSON.stringify(spec, null, 2));
-  console.log(`💾 Cached spec to ./specs/${filename}`);
-  
-  return spec;
+  console.log(`Cached spec to ./specs/${filename}`);
 }

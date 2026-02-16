@@ -3,7 +3,7 @@ import TurndownService from 'turndown';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
-import { urlToFilename, getProxyOptions } from './fetch.js';
+import { cacheSpec, getProxyOptions } from './fetch.js';
 
 interface Endpoint {
   path: string;
@@ -225,11 +225,6 @@ function isApiEndpoint(path: string): boolean {
     /^\/m\./,             // Messenger links
     /^\/www\./,           // External www links
     /^\/aws/,             // External links
-    /^\/jugendstil/,      // External links
-    /^\/jesgrad07/,       // External links
-    /^\/Loader/,          // Component names
-    /^\/chucknorris$/,    // Just domain name
-    /^\/MatChilling$/,    // Username
     /^\/$/,               // Root path
     /^\/\/+/,             // Double slashes
   ];
@@ -296,13 +291,7 @@ export async function docsToOpenAPI(input: string): Promise<any> {
   const openApiSpec = await exploreAndBuildSpec(endpoints, baseUrl);
   
   // 6. Save to ./specs/
-  const specsDir = join(process.cwd(), 'specs');
-  await mkdir(specsDir, { recursive: true });
-  const filename = urlToFilename(input);
-  const cachePath = join(specsDir, filename);
-  // @ts-ignore - Bun global
-  await Bun.write(cachePath, JSON.stringify(openApiSpec, null, 2));
-  console.log(`💾 Cached spec to ./specs/${filename}`);
+  await cacheSpec(openApiSpec, input);
   
   // 7. Validate & return
   return await SwaggerParser.validate(openApiSpec);
@@ -377,226 +366,152 @@ function extractEndpoints(markdown: string, inputUrl: string): Endpoint[] {
   return endpoints;
 }
 
+function buildGetPathItem(opts: {
+  summary: string;
+  schemaName: string;
+  isArray: boolean;
+  parameters?: Array<{ name: string; in: 'path' | 'query'; required?: boolean }>;
+}): Record<string, any> {
+  const schemaRef = `#/components/schemas/${opts.schemaName}`;
+  const schema = opts.isArray
+    ? { type: 'array' as const, items: { $ref: schemaRef } }
+    : { $ref: schemaRef };
+  const parameters = opts.parameters?.map(p => ({
+    name: p.name,
+    in: p.in,
+    ...(p.required && { required: true }),
+    schema: { type: 'string' as const }
+  }));
+  return {
+    get: {
+      summary: opts.summary,
+      ...(parameters?.length ? { parameters } : {}),
+      responses: {
+        '200': {
+          description: 'Success',
+          content: { 'application/json': { schema } }
+        }
+      }
+    }
+  };
+}
+
 async function exploreAndBuildSpec(endpoints: Endpoint[], baseUrl: string): Promise<any> {
   const paths: Record<string, any> = {};
   const schemas: Record<string, any> = {};
-  const schemaRefs = new Map<string, string>();
   
-  // Discover helper endpoints first (categories, lists, etc.)
   const listEndpoints = endpoints.filter(e => 
-    !e.path.includes('{id}') && 
-    !e.path.includes('{category}') && 
-    !e.path.includes('{query}')
+    !e.path.includes('{id}') && !e.path.includes('{category}') && !e.path.includes('{query}')
   );
-  
   const detailEndpoints = endpoints.filter(e => e.path.includes('{id}'));
   const queryEndpoints = endpoints.filter(e => e.path.includes('{query}') || e.path.includes('{category}'));
   
-  // Test list endpoints first to get schema and discover IDs
   for (const endpoint of listEndpoints) {
     try {
       const response = await testEndpoint(baseUrl, endpoint);
-      if (response.status === 200) {
-        const schemaName = inferSchemaName(endpoint.path);
-        const schema = inferSchema(response.data, schemaName);
-        
-        if (schema) {
-          schemas[schemaName] = schema;
-          schemaRefs.set(endpoint.path, schemaName);
-        }
-        
-        // Extract IDs from list responses for testing detail endpoints
-        const ids = extractIds(response.data);
-        
-        paths[endpoint.path] = {
-          get: {
-            summary: `Get ${schemaName}`,
-            responses: {
-              '200': {
-                description: 'Success',
-                content: {
-                  'application/json': {
-                    schema: Array.isArray(response.data) 
-                      ? { type: 'array', items: { $ref: `#/components/schemas/${schemaName}` } }
-                      : { $ref: `#/components/schemas/${schemaName}` }
-                  }
-                }
-              }
-            }
-          }
-        };
-        
-        // Add query parameters if endpoint has them
-        if (endpoint.queryParams && endpoint.queryParams.length > 0) {
-          paths[endpoint.path].get.parameters = endpoint.queryParams.map(param => ({
-            name: param,
-            in: 'query',
-            schema: { type: 'string' }
-          }));
-        }
-        
-        // Test detail endpoints with discovered IDs
-        for (const detailEndpoint of detailEndpoints) {
-          // Check if detail endpoint belongs to this list endpoint
-          // e.g., /people matches /people/{id}
-          const detailBasePath = detailEndpoint.path.replace('/{id}', '').replace('/{id}/', '');
-          if (detailBasePath === endpoint.path || detailEndpoint.path.startsWith(endpoint.path + '/')) {
-            for (const id of ids.slice(0, 2)) { // Test with first 2 IDs
-              const testPath = detailEndpoint.path.replace('{id}', id);
-              const detailResponse = await testEndpoint(baseUrl, { ...detailEndpoint, path: testPath });
-              if (detailResponse.status === 200) {
-                const detailSchemaName = inferSchemaName(detailEndpoint.path);
-                const detailSchema = inferSchema(detailResponse.data, detailSchemaName);
-                if (detailSchema) {
-                  schemas[detailSchemaName] = detailSchema;
-                }
-                
-                paths[detailEndpoint.path] = {
-                  get: {
-                    summary: `Get ${detailSchemaName} by ID`,
-                    parameters: detailEndpoint.pathParams?.map(param => ({
-                      name: param,
-                      in: 'path',
-                      required: true,
-                      schema: { type: 'string' }
-                    })) || [{
-                      name: 'id',
-                      in: 'path',
-                      required: true,
-                      schema: { type: 'string' }
-                    }],
-                    responses: {
-                      '200': {
-                        description: 'Success',
-                        content: {
-                          'application/json': {
-                            schema: { $ref: `#/components/schemas/${detailSchemaName}` }
-                          }
-                        }
-                      }
-                    }
-                  }
-                };
-                break; // Found working detail endpoint, move on
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`   ⚠️  Failed to test ${endpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  
-  // Test query endpoints
-  for (const endpoint of queryEndpoints) {
-    try {
-      // Try with sample values
-      let testPath = endpoint.path;
-      if (endpoint.path.includes('{category}')) {
-        // Try to get categories first
-        const categoriesEndpoint = listEndpoints.find(e => e.path.includes('categor'));
-        if (categoriesEndpoint) {
-          const catResponse = await testEndpoint(baseUrl, categoriesEndpoint);
-          if (catResponse.status === 200 && Array.isArray(catResponse.data) && catResponse.data.length > 0 && catResponse.data[0]) {
-            testPath = endpoint.path.replace('{category}', catResponse.data[0]);
-          } else {
-            testPath = endpoint.path.replace('{category}', 'dev'); // Default
-          }
-        } else {
-          testPath = endpoint.path.replace('{category}', 'dev');
-        }
-      }
-      if (endpoint.path.includes('{query}')) {
-        testPath = endpoint.path.replace('{query}', 'test');
-      }
+      if (response.status !== 200) continue;
       
-      const response = await testEndpoint(baseUrl, { ...endpoint, path: testPath });
-      if (response.status === 200) {
-        const schemaName = inferSchemaName(endpoint.path);
-        const schema = inferSchema(response.data, schemaName);
-        if (schema) {
-          schemas[schemaName] = schema;
-        }
+      const schemaName = inferSchemaName(endpoint.path);
+      const schema = inferSchema(response.data, schemaName);
+      if (schema) schemas[schemaName] = schema;
+      
+      const ids = extractIds(response.data);
+      const params = endpoint.queryParams?.map(p => ({ name: p, in: 'query' as const }));
+      
+      paths[endpoint.path] = buildGetPathItem({
+        summary: `Get ${schemaName}`,
+        schemaName,
+        isArray: Array.isArray(response.data),
+        parameters: params
+      });
+      
+      for (const detailEndpoint of detailEndpoints) {
+        const detailBasePath = detailEndpoint.path.replace(/\/\{id\}\/?/g, '');
+        if (detailBasePath !== endpoint.path && !detailEndpoint.path.startsWith(endpoint.path + '/')) continue;
         
-        paths[endpoint.path] = {
-          get: {
-            summary: `Search ${schemaName}`,
-            parameters: endpoint.path.includes('{query}') ? [{
-              name: 'query',
-              in: 'query',
-              required: true,
-              schema: { type: 'string' }
-            }] : endpoint.path.includes('{category}') ? [{
-              name: 'category',
-              in: 'query',
-              required: true,
-              schema: { type: 'string' }
-            }] : [],
-            responses: {
-              '200': {
-                description: 'Success',
-                content: {
-                  'application/json': {
-                    schema: Array.isArray(response.data) 
-                      ? { type: 'array', items: { $ref: `#/components/schemas/${schemaName}` } }
-                      : { $ref: `#/components/schemas/${schemaName}` }
-                  }
-                }
-              }
-            }
-          }
-        };
-      }
-    } catch (error) {
-      console.warn(`   ⚠️  Failed to test ${endpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-  
-  // Process any detail endpoints that weren't already processed
-  for (const detailEndpoint of detailEndpoints) {
-    if (!paths[detailEndpoint.path]) {
-      // Try with a common ID (1) as fallback
-      try {
-        const testPath = detailEndpoint.path.replace('{id}', '1');
-        const detailResponse = await testEndpoint(baseUrl, { ...detailEndpoint, path: testPath });
-        if (detailResponse.status === 200) {
+        for (const id of ids.slice(0, 2)) {
+          const testPath = detailEndpoint.path.replace('{id}', id);
+          const detailResponse = await testEndpoint(baseUrl, { ...detailEndpoint, path: testPath });
+          if (detailResponse.status !== 200) continue;
+          
           const detailSchemaName = inferSchemaName(detailEndpoint.path);
           const detailSchema = inferSchema(detailResponse.data, detailSchemaName);
-          if (detailSchema) {
-            schemas[detailSchemaName] = detailSchema;
-          }
+          if (detailSchema) schemas[detailSchemaName] = detailSchema;
           
-          paths[detailEndpoint.path] = {
-            get: {
-              summary: `Get ${detailSchemaName} by ID`,
-              parameters: detailEndpoint.pathParams?.map(param => ({
-                name: param,
-                in: 'path',
-                required: true,
-                schema: { type: 'string' }
-              })) || [{
-                name: 'id',
-                in: 'path',
-                required: true,
-                schema: { type: 'string' }
-              }],
-              responses: {
-                '200': {
-                  description: 'Success',
-                  content: {
-                    'application/json': {
-                      schema: { $ref: `#/components/schemas/${detailSchemaName}` }
-                    }
-                  }
-                }
-              }
-            }
-          };
+          const pathParams = detailEndpoint.pathParams?.map(p => ({ name: p, in: 'path' as const, required: true }))
+            ?? [{ name: 'id', in: 'path' as const, required: true }];
+          
+          paths[detailEndpoint.path] = buildGetPathItem({
+            summary: `Get ${detailSchemaName} by ID`,
+            schemaName: detailSchemaName,
+            isArray: false,
+            parameters: pathParams
+          });
+          break;
         }
-      } catch (error) {
-        console.warn(`   ⚠️  Failed to test detail endpoint ${detailEndpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
       }
+    } catch (error) {
+      console.warn(`   ⚠️  Failed to test ${endpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  for (const endpoint of queryEndpoints) {
+    try {
+      let testPath = endpoint.path;
+      if (endpoint.path.includes('{category}')) {
+        const categoriesEndpoint = listEndpoints.find(e => e.path.includes('categor'));
+        const catData = categoriesEndpoint ? (await testEndpoint(baseUrl, categoriesEndpoint)).data : null;
+        testPath = endpoint.path.replace('{category}', 
+          Array.isArray(catData) && catData[0] ? catData[0] : 'dev');
+      }
+      if (endpoint.path.includes('{query}')) testPath = endpoint.path.replace('{query}', 'test');
+      
+      const response = await testEndpoint(baseUrl, { ...endpoint, path: testPath });
+      if (response.status !== 200) continue;
+      
+      const schemaName = inferSchemaName(endpoint.path);
+      const schema = inferSchema(response.data, schemaName);
+      if (schema) schemas[schemaName] = schema;
+      
+      const params = endpoint.path.includes('{query}')
+        ? [{ name: 'query', in: 'query' as const, required: true }]
+        : endpoint.path.includes('{category}')
+          ? [{ name: 'category', in: 'query' as const, required: true }]
+          : undefined;
+      
+      paths[endpoint.path] = buildGetPathItem({
+        summary: `Search ${schemaName}`,
+        schemaName,
+        isArray: Array.isArray(response.data),
+        parameters: params
+      });
+    } catch (error) {
+      console.warn(`   ⚠️  Failed to test ${endpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  for (const detailEndpoint of detailEndpoints) {
+    if (paths[detailEndpoint.path]) continue;
+    try {
+      const testPath = detailEndpoint.path.replace('{id}', '1');
+      const detailResponse = await testEndpoint(baseUrl, { ...detailEndpoint, path: testPath });
+      if (detailResponse.status !== 200) continue;
+      
+      const detailSchemaName = inferSchemaName(detailEndpoint.path);
+      const detailSchema = inferSchema(detailResponse.data, detailSchemaName);
+      if (detailSchema) schemas[detailSchemaName] = detailSchema;
+      
+      const pathParams = detailEndpoint.pathParams?.map(p => ({ name: p, in: 'path' as const, required: true }))
+        ?? [{ name: 'id', in: 'path' as const, required: true }];
+      
+      paths[detailEndpoint.path] = buildGetPathItem({
+        summary: `Get ${detailSchemaName} by ID`,
+        schemaName: detailSchemaName,
+        isArray: false,
+        parameters: pathParams
+      });
+    } catch (error) {
+      console.warn(`   ⚠️  Failed to test detail endpoint ${detailEndpoint.path}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

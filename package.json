@@ -1,24 +1,31 @@
 {
-  "name": "docs-to-cli",
+  "name": "docs-to-client",
   "version": "0.1.0",
   "description": "Generate typed Bun clients from OpenAPI specs",
   "type": "module",
   "bin": {
-    "docs-to-cli": "./index.ts"
+    "docs-to-client": "./index.ts"
   },
   "scripts": {
     "dev": "bun run index.ts",
     "test": "bun test",
     "build": "bun build --compile --target=bun-windows-x64 ./index.ts --outfile ./bin/dtoc.exe"
   },
-  "keywords": ["openapi", "swagger", "bun", "cli", "typescript"],
-  "author": "",
+  "keywords": [
+    "openapi",
+    "swagger",
+    "bun",
+    "cli",
+    "typescript"
+  ],
+  "author": "Prithwish Nath",
   "license": "MIT",
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
     "turndown": "^7.1.3"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.9",
     "@types/node": "^20.0.0",
     "@types/turndown": "^5.0.5"
   }
