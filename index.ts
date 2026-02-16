@@ -9,9 +9,9 @@ async function main() {
   const input = args[0];
   
   if (!input) {
-    console.error('Usage: bunx docs-to-cli <url-or-file>');
-    console.error('Example: bunx docs-to-cli https://api.example.com/docs');
-    console.error('Example: bunx docs-to-cli ./specs/openapi.json');
+    console.error('Usage: bunx docs-to-client <url-or-file>');
+    console.error('Example: bunx docs-to-client https://api.example.com/docs');
+    console.error('Example: bunx docs-to-client ./specs/openapi.json');
     process.exit(1);
   }
 

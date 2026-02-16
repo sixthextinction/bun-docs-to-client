@@ -37,6 +37,19 @@ bun run build
 ./bin/dtoc.exe <url-or-file>
 ```
 
+The default build targets Windows x64. For other platforms, override the target:
+
+```bash
+# Linux x64
+bun build --compile --target=bun-linux-x64 ./index.ts --outfile ./bin/dtoc
+
+# macOS (Apple Silicon)
+bun build --compile --target=bun-darwin-arm64 ./index.ts --outfile ./bin/dtoc
+
+# macOS (Intel)
+bun build --compile --target=bun-darwin-x64 ./index.ts --outfile ./bin/dtoc
+```
+
 ## What it does
 
 1. **Accepts OpenAPI JSON or HTML docs** - Automatically detects and converts HTML docs to OpenAPI using LLM
@@ -82,9 +95,6 @@ bun run index.ts <url-or-file>
 
 # Build executable
 bun run build
-
-# Run tests
-bun test
 ```
 
 ## Requirements

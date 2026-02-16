@@ -1,6 +1,8 @@
 node_modules/
 dist/
+specs/
 generated/
+example_clients/
 bin/
 debug/
 *.log
